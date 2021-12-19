@@ -6,6 +6,16 @@ output: pdf_document
 geometry : margin = 0.6in
 header-include :
   - \usepackage{hyperref}
+  - \usepackage{neurips_2021}
+  - \usepackage[utf8]{inputenc}
+  - \usepackage[T1]{fontenc}
+  - \usepackage{hyperref}
+  - \usepackage{url}
+  - \usepackage{booktabs}
+  - \usepackage{amsfonts}
+  - \usepackage{nicefrac}
+  - \usepackage{microtype}
+  - \usepackage{xcolor}
 ---
 
 
@@ -17,7 +27,7 @@ Method : Data integration with graphical models
 Data : TCGA
 \end{abstract}
 
-# Introduction
+\section{Introduction}
 
 Biological data have enrich network structures. But analyzing the network based on one data might be limited because there might be two clusters sharing similar biological characteristics in this layers of biological data, but can be differentiate in another biological data. Thus, if we can integrate information from different types of data of the same disease type can identify the true network.
 
