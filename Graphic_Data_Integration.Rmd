@@ -1,0 +1,71 @@
+---
+title: "Proposal"
+author: "Zhuohui Liang/zl2974"
+date: "12/1/2021"
+output: pdf_document
+geometry : margin = 0.6in
+header-include :
+  - \usepackage{hyperref}
+---
+
+
+\begin{abstract}
+Goal : We try to identify the subtypes of breast cancer with a data integration method based on graphical models
+
+Method : Data integration with graphical models
+
+Data : TCGA
+\end{abstract}
+
+# Introduction
+
+Biological data have enrich network structures. But analyzing the network based on one data might be limited because there might be two clusters sharing similar biological characteristics in this layers of biological data, but can be differentiate in another biological data. Thus, if we can integrate information from different types of data of the same disease type can identify the true network.
+
+# Method
+
+\cite{chu2019integration} proposed a data integration framework to integrate different level a biological data with a graphical lasso like algorithm. To fuse the information in different layers, he proposed using a penalties term to enforce that the graph learned from different data should be consensus except for a few disagreement on some edges.
+
+Using this method, I will integrate breast cancer omics data from TCGA and interpret the structure learned from integrated methods compares to structure learnt from one data types in his paper, and use the method again on  Kidney renal papillary cell carcinoma (KIRP) and compared the learn network with existing gene-gene interaction network from STRING.
+
+There the author has made a package and available on \href{https://github.com/Zhangxf-ccnu/JEGN}{Github}.
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lattice)
+
+source("R/JEGN.R")
+
+```
+
+
+```{r data}
+load("data/TCGA.BRCA.rda")
+
+kirp = list(X = list(
+  read.csv(
+    "data/Human__TCGA_KIRP__JHU_USC__Methylation__Meth450__01_28_2016__BI__Gene__Firehose_Methylation_Prepocessor.cct.gz",
+    sep = "\t"
+  ),
+  read.csv(
+    "data/Human__TCGA_KIRP__UNC__RNAseq__HiSeq_RNA__01_28_2016__BI__Gene__Firehose_RSEM_log2.cct.gz",
+    sep = "\t"
+  )
+))
+
+kirp$colname = Reduce("intersect",lapply(kirp$X,colnames))
+kirp$X = lapply(kirp$X,function(x) x[,kirp$colname])
+
+```
+
+
+```{r network inference}
+
+```
+
+
+\bibliographystyle{apalike} 
+\bibliography{scholar}
