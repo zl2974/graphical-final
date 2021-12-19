@@ -1,7 +1,7 @@
 # Run JEGN on TCGA breast cancer datasets
 
 rm(list=ls())
-library(JEGN)
+source("R/JEGN.R")
 
 data("TCGA.BRCA")
 
