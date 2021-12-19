@@ -42,38 +42,172 @@ There the author has made a package and available on \href{https://github.com/Zh
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = T)
 
 library(tidyverse)
+library(parallel)
 library(lattice)
+library(foreach)
+library(parallel)
+library(doParallel)
 
 source("R/JEGN.R")
 
 ```
 
 
-```{r data}
-load("data/TCGA.BRCA.rda")
+```{r data,echo=FALSE}
+kirp_string =  read.csv("data/9606.protein.links.v11.0.txt", sep = " ") %>%
+  filter(combined_score >= 200) %>% 
+  left_join(
+    read_csv(
+      "data/String_Network_default_node_04.csv",
+      col_select = c(13, 14)
+    ),
+    by = c("protein1" =
+             "name")
+  ) %>%
+  left_join(
+    read_csv(
+      "data/String_Network_default_node_04.csv",
+      col_select = c(13, 14)
+    ),
+    by = c("protein2" =
+             "name")
+  ) %>%
+  select(gene1 = `display name.x`, gene2 = `display name.y`, combined_score)
 
-kirp = list(X = list(
-  read.csv(
-    "data/Human__TCGA_KIRP__JHU_USC__Methylation__Meth450__01_28_2016__BI__Gene__Firehose_Methylation_Prepocessor.cct.gz",
-    sep = "\t"
-  ),
-  read.csv(
-    "data/Human__TCGA_KIRP__UNC__RNAseq__HiSeq_RNA__01_28_2016__BI__Gene__Firehose_RSEM_log2.cct.gz",
-    sep = "\t"
+kirp.subtype = read.csv(
+  "data/Human__TCGA_KIRP__MS__Clinical__Clinical__01_28_2016__BI__Clinical__Firehose.tsi",
+  sep = "\t"
+)
+
+kirp.1 = read.csv(
+  "data/Human__TCGA_KIRP__JHU_USC__Methylation__Meth450__01_28_2016__BI__Gene__Firehose_Methylation_Prepocessor.cct.gz",
+  sep = "\t"
+) %>%
+  .[colMeans(apply(., 1, is.na)) < 0.3,]
+
+kirp.2 = read.csv(
+  "data/Human__TCGA_KIRP__UNC__RNAseq__HiSeq_RNA__01_28_2016__BI__Gene__Firehose_RSEM_log2.cct.gz",
+  sep = "\t"
+) %>%
+  .[colMeans(apply(., 1, is.na)) < 0.3,]
+
+kirc.1 = read.csv(
+  "data/Human__TCGA_KIRC__JHU_USC__Methylation__Meth450__01_28_2016__BI__Gene__Firehose_Methylation_Prepocessor.cct.gz",
+  sep = "\t"
+) %>%
+  .[colMeans(apply(., 1, is.na)) < 0.3,]
+
+kirc.2 = read.csv(
+  "data/Human__TCGA_KIRC__UNC__RNAseq__HiSeq_RNA__01_28_2016__BI__Gene__Firehose_RSEM_log2.cct.gz",
+  sep = "\t"
+) %>%
+  .[colMeans(apply(., 1, is.na)) < 0.3,]
+
+
+methy = inner_join(kirp.1,kirc.1,by = "attrib_name") %>% 
+  .[rowMeans(.[,-1],na.rm = T)>quantile(rowMeans(.[,-1],na.rm = T),0.4),] %>% 
+  .[apply(.[,-1], 1, sd,na.rm = T)>quantile(apply(.[,-1], 1, sd,na.rm = T),0.4),] %>% 
+  pull(attrib_name)
+
+rna_seq = inner_join(kirp.2,kirc.2,by = "attrib_name") %>% 
+  .[rowMeans(.[,-1],na.rm = T)>quantile(rowMeans(.[,-1],na.rm = T),0.4),] %>% 
+  .[apply(.[,-1], 1, sd,na.rm = T)>quantile(apply(.[,-1], 1, sd,na.rm = T),0.4),] %>% 
+  pull(attrib_name)
+
+kirp.gene = Reduce(
+  intersect,
+  list(
+    unique(kirp_string$gene1),
+    methy,
+    rna_seq
   )
-))
+)
 
-kirp$colname = Reduce("intersect",lapply(kirp$X,colnames))
-kirp$X = lapply(kirp$X,function(x) x[,kirp$colname])
+tcga.rcc = lapply(list(kirp.1, kirp.2, kirc.1, kirc.2), function(x) {
+  x = x %>%
+    filter(attrib_name %in% kirp.gene) %>%
+    select(-attrib_name) %>%
+    as.matrix(.) %>% 
+    impute::impute.knn(.) %>% 
+    .$data %>% 
+    t() %>%
+    as.matrix()
+  
+  colnames(x) <- kirp.gene
+  
+  x
+})
 
+rm(kirp.1,kirc.2,kirc.1,kirp.2)
+
+write_rds(tcga.rcc,"data/tcga.rcc")
+
+# tcga.rcc = lapply(tcga.rcc, function(x)
+#   complete(mice::mice(x, m = 1, method = "mean")))
+# TODO : Missing Data, what the fuck is going on here
 ```
 
 
-```{r network inference}
+```{r tuning parameter}
 
+cl = makePSOCKcluster(4)
+registerDoParallel(cl)
+
+tuning = 
+  foreach(b = c(0.5,0.9,1.3,1.7,2),
+          .combine  = "rbind",
+          .packages = c("tidyverse")) %dopar%{
+            
+            result = tibble::tibble(alpha = 0.4,
+                                    beta = b)
+            
+            Omega11 = Omega12 = Omega21 = Omega22 = 0
+            
+            for (i in 1:20) {
+              tcga.rcc = read_rds("data/tcga.rcc")
+              tcga.rcc = lapply(tcga.rcc, function(x)
+                x[sample(1:nrow(x), 0.5 * nrow(x)),])
+              
+              tcga.rcc = matrix(tcga.rcc, ncol = 2)
+              
+              tcga.rcc.jegn = JEGN(tcga.rcc, lambda =  b, alpha = 0.4)
+              
+              Omega11 = Omega11 + (tcga.rcc.jegn$Omega.hat[1, 1][[1]]>0)
+              Omega21 = Omega21 + (tcga.rcc.jegn$Omega.hat[2, 1][[1]]>0)
+              Omega12 = Omega12 + (tcga.rcc.jegn$Omega.hat[1, 2][[1]]>0)
+              Omega22 = Omega22 + (tcga.rcc.jegn$Omega.hat[2, 2][[1]]>0)
+            }
+            
+            Stab = lapply(list(Omega11, Omega21, Omega12, Omega22), function(x)
+              x / 20)
+            Stab = lapply(Stab, function(x) {
+              sum(x*(1 - x) / (choose(ncol(x), 2)))
+            })
+            Stab = Reduce("+",Stab)
+            
+            result$Stab = Stab
+            
+            result
+          }
+```
+
+
+```{r}
+plot(tuning$beta,tuning$Stab)
+```
+
+
+```{r network inference,eval = F}
+tcga.rcc = read_rds("data/tcga.rcc")
+tcga.rcc = lapply(tcga.rcc, cov,use = "complete.obs")
+
+tcga.rcc = matrix(tcga.rcc,ncol = 2)
+
+tcga.rcc.jegn = JEGN.admm(tcga.rcc, lambda =  0.95, alpha = 0.4)
 ```
 
 
