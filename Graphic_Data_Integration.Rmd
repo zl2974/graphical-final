@@ -2,14 +2,14 @@
 title: "Proposal"
 author: "Zhuohui Liang/zl2974"
 date: "12/1/2021"
-output: pdf_document
-geometry : margin = 0.6in
+output: 
+  pdf_document:
+    keep_tex: true
 header-include :
+  - \usepackage[preprint]{neurips_2021}
   - \usepackage{hyperref}
-  - \usepackage{neurips_2021}
   - \usepackage[utf8]{inputenc}
   - \usepackage[T1]{fontenc}
-  - \usepackage{hyperref}
   - \usepackage{url}
   - \usepackage{booktabs}
   - \usepackage{amsfonts}
@@ -29,21 +29,109 @@ Data : TCGA
 
 \section{Introduction}
 
-Biological data have enrich network structures. But analyzing the network based on one data might be limited because there might be two clusters sharing similar biological characteristics in this layers of biological data, but can be differentiate in another biological data. Thus, if we can integrate information from different types of data of the same disease type can identify the true network.
+Gene-gene interaction can use to represent complex biological relationship. Highly connected gene(also a hub) can play important role in disease development, different subtypes of disease also can have different interaction. Correctly identification of the network structure can help understanding the biological process. For example, \cite{ruan2021disnep} used the gene-gene interaction for candidate gene prioritization.
 
-# Method
+Openly available omics data makes reconstructing the gene-gene interaction network possible. Popular method like Gaussian Graphical Method(GGM) can be used to estimate the partial correlation to represent the gene-gene interaction network structure. 
 
-\cite{chu2019integration} proposed a data integration framework to integrate different level a biological data with a graphical lasso like algorithm. To fuse the information in different layers, he proposed using a penalties term to enforce that the graph learned from different data should be consensus except for a few disagreement on some edges.
+Omics data have multiple layers(e.g. methylation, RNA expression count). Data on different level provide some information of the biological process on that level. However, GGM and other methods only consider one layer of data, analyzing the network based on one data might be limited. For example, there might be two clusters sharing similar biological characteristics in this layers of biological data, but can be differentiate in another biological data. Thus, if we can integrate information from different types of data of the same disease type can better identify network.
 
-Using this method, I will integrate breast cancer omics data from TCGA and interpret the structure learned from integrated methods compares to structure learnt from one data types in his paper, and use the method again on  Kidney renal papillary cell carcinoma (KIRP) and compared the learn network with existing gene-gene interaction network from STRING.
+\cite{8917700} proposed a data integration graphical model, by simultaneously updating graph of each data and introduce penalties that regular common structure and disease specified structure, the method can integrate information from different layers of data and identify interaction unique to each disease subtypes. 
 
-There the author has made a package and available on \href{https://github.com/Zhangxf-ccnu/JEGN}{Github}.
+To understand the characterization of breast cancer subtypes from the perspective of network dynamics, this report will infer the cancer subtype-specific gene networks and learn the network variations across different cancer subtypes.In this report, popular graph structure estimation methods(GGM, WGCNA) method will be compared to \cite{8917700} method to reconstruct a sub network of Kidney Renal Cell Carcinoma. By comparing the common network to existing gene-gene interaction network and disease specific network to disease related gene to evaluate the graph estimated and identify disease related gene-gene interaction.
+
+\section{Method}
+
+\subsection{Gaussian Graphical Model}
+
+Gaussian graphical model can also use to estimate the geng-gene interaction graph by charactrerizing the conditional dependence structure of given data. From MRF, $X_i\not\sim Xj$ iff the corresponding entry of precision matrix is 0. To estimate the strucure of precision matrix, lasso with penalties on sparsity of the penalty term can use to estimate the precision matrix, the optimization problem is:
+
+$$\Omega = argmin_\Omega\{tr(\Sigma\Omega) - log~det(\Omega)+\lambda||\Omega||_1  \}$$
+
+FastGGM by \cite{wang2016fastggm} version of GGM will be implemented in this report and etimating the graphical structure of the data separately comparing with the Joint Graphical Model.
+
+\subsection{Joint Graphical Model(JGM)}
+
+\cite{8917700} proposed a data integration framework to integrate different level a biological data with a graphical lasso like algorithm. To fuse the information in different layers, Zhang proposed using a penalties term to enforce that the graph learned from different data should have the percision matrix structure of $inv(\Sigma^{kg}) = \Omega^{kg} = R^k + M^{kg}$, where $R^k$ is the structure represent the common structure among $g$ subtypes of $k$'s data types, and $M^{kg}$ represent the unique structure of each subtypes.
+
+The algorithm solve for the optimization problem of 
+
+$$min_\Omega \sum_k\sum_g n\{tr(\Sigma^{kg}\Omega^{kg}) - log~det(\Omega^{kg})\} +\lambda\alpha*G\sum_{i\ne j}\sqrt{\sum_k(R_{ij}^k)^2}+\lambda(1-\alpha)\sum_g\sum_{i\ne j}\sqrt{\sum_k(M^{kg}_{ij})^2}$$
+
+$$s.t. ~\Omega^{kg} = R^k + M^{kg}$$
+
+The first term applies a group lasso penalty to the (i, j)th element across the K common components for different data types, encouraging a similar pattern of sparsity across the K common matrices, $\{R_1,...,R_K\}$.
+The second term applies a group lasso penalty to the (i, j)th element across the K subpopulation-unique components for different data types, encouraging a shared network structure,$\{M_{1g},...,M_{Kg}\}$.
+
+The complexity of the optimization problem is $O(TKGp^3)$, where $T$ is the iteration time, $K$ is the data types, $G$ is the subtypes and $p$ representing the gene.
+
+The author has made a package and available on \href{https://github.com/Zhangxf-ccnu/JEGN}{Github}.
+
+\subsection{Weighted Correlation Network Analysis(WGCNA)}
+
+WGCNA use the weighted absolute correlation to estimate a graphical structure. Given a soft threshold $\beta$, entries of estimated correlation matrix $$\hat{S_{ij}} = |cor(x_i,x_j)|^\beta$$
+
+$$s.t.~\beta\ge1$$
+
+WGCNA estiamte a marginal correlation matrix instead of partial correlation matrix.
+
+\subsection{TCGA-Renal Cell Carcinoma Data(Kidney)}
+
+TCGA's Kidney Renal Cell Carcinoma subset, including histologic types of Kidney Renal Clear Cell Carcinoma(KIRC) and Kidney Renal Paplilary Cell Carcinoma(KIRP) are included in this report. KIRC has 537 tumor samples and KIRP has 291 tumor samples. 
+
+Methylation at Gene level(Illumina HM450K platform) and RNAseq(HiSeq platform) are selected for the study for both types of RCC. Solely limiting by the complexity of the Joint Graphical Model and the computation time, all gene are filtered for mean and standard deviation of methylation level and gene expression level rank above 50%. After filtering, 1415 gene out of 20159 remain for all the dataset. Missing observation in the methylation data is assumed to be Missing-at-random and use K-nearest-neighbour method for imputation.
+
+\subsection{parameter selection}
+
+JGM has two turning paramters, sparsity penalty $\lambda$ and structure penalty $\alpha$, limit to the complexity and computation time, we define $\alpha = 0.4$ as used in \cite{8917700} and tuning sparsity $\lambda$.
+
+We sample 20 subset of the original data with a sample size of $0.5n$ without replacement and define stability as \cite{8917700}:
+
+$$Stab(\lambda)\sum_k(\sum_{i<j}B_{ij}(1-B_{ij})/{p\choose 2})/K$$
+
+where $B_{ij} = (1/S)\sum_sI(\hat\Omega_{ij}(\lambda,\alpha)\ne 0)$ 
+and choose $\lambda = argmin\{Stab(\lambda)\}$.
+
+FastGGM has $\lambda$ for the penalty term. Using similar approach as above we select the optimal parameters for each data types.
+
+WGCNA has threshold power $\beta$ as parameter. Because WGCNA estimate a marginal correlation matrix instead of a percision matrix, above MRF based method cannot apply to WGCNA. Instead, using the WGCNA build in default thresholding method on $R^2$.
+
+Parameter selected see appendix.
+
+\textbf{Due to complexity, the parameter tuning of JGM cannot done in a 24-hour run. Based on the model similarity to graphical lasso, the maximum $\lambda$ used in FastGGM is used to estimate the graph for result analysis.}
+
+\section{Result}
+
+For the purpose of visualization, only the gene-gene interaction of those gene whose connection(degree) rank above 60% are shown. 
+
+\subsection{WGCNA}
+
+Because WGCNA estimate a marignal correlation matrix, I cannot transform the matrix to a Markov Random Field representation. Directly looking at the correlation matrix, the gene-gene correlation structure is mostly different accross 4 data. 
+
+Using the top 10% correlated gene as candidate, we compared with the RCC related gene. The true positive rate of using Methylation data is 0.04,0.11, and 0.07 for RNA-seq data. And if we use top 1% gene as candidate, the true positive rate becomes 0.06 for methalaytion data and 0.06,0.26 for RNA-seq data. Using topology to predict disease gene is not reliable in WGCNA cases.
+
+\subsection{GGM}
+
+Using the parameter selected by stability. However, the precision matrices are extremely dense especially those estimated from methylation data, making inference subject to fraudeness. To ensure the robustness of the inference, we thresholding the edge which partial correlation is significant under $FDR = 0.001$, but the graphs are still dense compared to existing gene-gene interaction network. 
+
+ We focus on RNA-seq data, KIRP has 218505 edges and KIRC has 563095 edges. Of these edges 398822 edges are shared between two subtypes. Of those common edges, only 12112 edge out of 113388 existing edges are founded in the graph. We calculate subtype unique network by taking the edge uniquely to the disease subtype. KIRP has 79112 unique edges and KIRC has 423702 unique edges.
+ 
+ We analysis the biggest hub in the KIRP unique graph. 
+
+
+
+
+\section{Discussion}
+
+The JGM method is very limited to new gene-gene interaction dectation due to its scalabiltiy to number of parameters. Although JGM proposed a penalties term to simultaneously optimize based on some joint common structures, the final result are still limited to a graph for each data instead of a global representation. 
+
+The inference of the result limited to topology analysis of the constructed graph. Limited to the complexity and access to control(non-tumoral sample) RNA-seq data, the report could have analyzed the usage of the constructed graph for candidate disease gene prioritizing using network enhancement \cite{ruan2021disnep}. And compare the True Positive Rate of priortized gene to database to get a sense of how the constructed graph helping downstream analysis.
 
 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
-                      cache = T)
+                      cache = T,
+                      eval = F)
 
 library(tidyverse)
 library(parallel)
